@@ -179,6 +179,22 @@ TextContent {
     margin: 1 0;
 }
 
+Input.-valid {
+    border: tall $success 60%;
+}
+Input.-valid:focus {
+    border: tall $success;
+}
+Input {
+    margin: 1 1;
+}
+Label {
+    margin: 1 2;
+}
+Pretty {
+    margin: 1 2;
+}
+
 QuickAccess {
     width: 30;
     dock: left;
@@ -204,6 +220,11 @@ LocationLink:hover {
 
 .pad {
     margin: 1 0;
+}
+
+.hand {
+    text-align: center;
+    height: 6;
 }
 
 DataTable {

@@ -3,15 +3,28 @@ from typing import Optional
 
 from rich.markdown import Markdown
 from rich.text import Text
+from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive
-from textual.widgets import Button, DataTable, Footer, Header, Input, Static
+from textual.validation import Function, Number
+from textual.widgets import (
+    Button,
+    DataTable,
+    Digits,
+    Footer,
+    Header,
+    Input,
+    Label,
+    Pretty,
+    Static,
+)
 
 from classes import (
     AboveFold,
     Body,
     Column,
+    Hand,
     Player,
     QuickAccess,
     Section,
@@ -49,12 +62,17 @@ class CreatePlayer(Container):
     def compose(self) -> ComposeResult:
         yield Vertical(
             Horizontal(
-                TextContent(Text("Name: ")),
+                Label("Name: "),
                 Input("Name", name="name"),
-                TextContent(Text("Buy In: ")),
+                Label("Buy In: "),
                 Input("Buy In", name="buy_in"),
             ),
-            Button("Create", id="create_player", variant="success"),
+            Button(
+                "Create",
+                id="create_player",
+                variant="success",
+                disabled=self.player is not None,
+            ),
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -66,14 +84,79 @@ class CreatePlayer(Container):
             # self.app.query_one(".location-play").scroll_visible(duration=0.5, top=True)
 
 
+class GamePlayer(Container):
+    def __init__(self, player: Player) -> None:
+        super().__init__()
+        self.player = player
+        self.hand = Hand()
+
+    def compose(self) -> ComposeResult:
+        in_progress = self.app.query_one("#game", expect_type=Game).in_progress
+        hit = (
+            len(self.hand.cards) >= 2 and in_progress and self.hand.get_total()[0] < 21
+        )
+        double = len(self.hand.cards) == 2 and in_progress
+
+        cards = self.hand.get_hand().split(",")
+        split = len(cards) == 2 and cards[0] == cards[1] and in_progress
+
+        yield Vertical(
+            Label(self.player.name),
+            Horizontal(
+                Label("Balance: "), Digits(self.player.get_balance(), id="balance")
+            ),
+            Horizontal(
+                Label("Bet: "),
+                Input(
+                    "Bet",
+                    name="bet",
+                    validators=[
+                        Function(
+                            self.is_valid_bet,
+                            "Bet must be a multiple of 10 and less than your balance",
+                        ),
+                    ],
+                    disabled=in_progress,
+                ),
+                Button("Bet", id="bet", variant="success", disabled=in_progress),
+            ),
+            Label("Hand: "),
+            TextContent(classes="hand", id="hand"),
+            Vertical(
+                Horizontal(
+                    Button("Hit", id="hit", variant="primary", disabled=not hit),
+                    Button(
+                        "Stand", id="stand", variant="warning", disabled=not in_progress
+                    ),
+                ),
+                Horizontal(
+                    Button(
+                        "Double", id="double", variant="success", disabled=not double
+                    ),
+                    Button("Split", id="split", variant="success", disabled=not split),
+                ),
+            ),
+        )
+
+    def is_valid_bet(self, bet: str) -> bool:
+        return (
+            int(bet) >= 10
+            and int(bet) <= int(self.player.balance / 100)
+            and (int(bet) % 10 == 0)
+        )
+
+
 class Game(Container):
     def __init__(self, players: list[Player], num_decks: int) -> None:
         super().__init__()
         self.players = players
         self.shoot = Shoot(decks=num_decks)
+        self.in_progress = False
 
     def compose(self) -> ComposeResult:
-        yield Static(Markdown(WELCOME))
+        yield Vertical(
+            Button("Deal", id="deal", variant="success", disabled=self.in_progress),
+        )
 
 
 class BlackjackApp(App):
@@ -130,7 +213,17 @@ class BlackjackApp(App):
                                 "Remove Player", id="remove_player", variant="error"
                             ),
                         ),
+                        Input(
+                            placeholder="Number of Decks",
+                            name="num_decks",
+                            validators=[Number(minimum=1, maximum=8)],
+                        ),
+                        Pretty([]),
                         Button("Start Game", id="start_game", variant="warning"),
+                    ),
+                    Section(
+                        SectionTitle("Game"),
+                        Container(id="game"),
                     ),
                     classes="location-play",
                 ),
@@ -156,7 +249,24 @@ class BlackjackApp(App):
                     if create_player.player:
                         self.players.append(create_player.player)
 
+            num_decks = self.query_one("Input[name='num_decks']", expect_type=Input)
+
+            self.query_one("#game").mount(
+                Game(players=self.players, num_decks=int(num_decks.value))
+            )
+
             self.app.query_one(".location-play").scroll_visible(duration=0.5, top=True)
+
+    @on(Input.Changed)
+    def show_invalid_reasons(self, event: Input.Changed) -> None:
+        # Updating the UI to show the reasons why validation failed
+        if event.input.id == "num_decks":
+            if event.validation_result and not event.validation_result.is_valid:
+                self.query_one(Pretty).update(
+                    event.validation_result.failure_descriptions
+                )
+            else:
+                self.query_one(Pretty).update([])
 
     def on_mount(self) -> None:
         lookup = {

@@ -61,6 +61,19 @@ class Card:
 
         return f"[{rank}{suit}]"
 
+    def unicode(self) -> str:
+        ret = 127136
+        match self.suit:
+            case Suit.HEARTS:
+                ret += 16
+            case Suit.DIAMONDS:
+                ret += 16 * 2
+            case Suit.CLUBS:
+                ret += 16 * 3
+
+        ret += self.rank.value
+        return "&#" + hex(ret)[1:] + ";"
+
 
 @dataclass
 class Player:
