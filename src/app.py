@@ -31,6 +31,7 @@ from classes import (
     SectionTitle,
     Shoot,
     Strategy,
+    SubTitle,
     TextContent,
 )
 from src.app_text import RULES, STRATEGY_INTRO, WELCOME
@@ -92,13 +93,16 @@ class GamePlayer(Container):
 
     def compose(self) -> ComposeResult:
         in_progress = self.app.query_one("#game", expect_type=Game).in_progress
-        hit = (
-            len(self.hand.cards) >= 2 and in_progress and self.hand.get_total()[0] < 21
-        )
+
+        total1, total11 = self.hand.get_total()
+
+        hit = len(self.hand.cards) >= 2 and in_progress and total1 < 21
         double = len(self.hand.cards) == 2 and in_progress
 
         cards = self.hand.get_hand().split(",")
         split = len(cards) == 2 and cards[0] == cards[1] and in_progress
+
+        total_str = f"{total1}/{total11}" if total1 != total11 else str(total1)
 
         yield Vertical(
             Label(self.player.name),
@@ -121,7 +125,8 @@ class GamePlayer(Container):
                 Button("Bet", id="bet", variant="success", disabled=in_progress),
             ),
             Label("Hand: "),
-            TextContent(classes="hand", id="hand"),
+            CardDisplay(self.hand),
+            TextContent(Text(total_str), classes="total", id="total"),
             Vertical(
                 Horizontal(
                     Button("Hit", id="hit", variant="primary", disabled=not hit),
@@ -146,6 +151,23 @@ class GamePlayer(Container):
         )
 
 
+class CardDisplay(Container):
+    def __init__(self, hand: Hand) -> None:
+        super().__init__()
+        self.hand = hand
+
+    def compose(self) -> ComposeResult:
+        if self.hand.dealer:
+            unicode_hand = f"{self.hand.cards[0].unicode()} &#x1F0A0;"
+        else:
+            unicode_hand = " ".join(x.unicode() for x in self.hand.cards)
+
+        yield Vertical(
+            TextContent(Markdown(unicode_hand), classes="hand", id="hand"),
+            SubTitle(str(self.hand)),
+        )
+
+
 class Game(Container):
     def __init__(self, players: list[Player], num_decks: int) -> None:
         super().__init__()
@@ -154,7 +176,12 @@ class Game(Container):
         self.in_progress = False
 
     def compose(self) -> ComposeResult:
+        remaining = len(self.shoot.cards) - self.shoot.reshuffle
+
         yield Vertical(
+            TextContent(Text(f"Cards remaining until reshuffle: {remaining}")),
+            TextContent(Text(f"Current Count: {self.shoot.count}")),
+            Section(SectionTitle("Dealer"), Container()),
             Button("Deal", id="deal", variant="success", disabled=self.in_progress),
         )
 

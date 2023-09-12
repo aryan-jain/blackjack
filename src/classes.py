@@ -157,6 +157,15 @@ class Hand:
                 return str(total11)
 
     def get_total(self) -> tuple[int, int]:
+        if self.dealer:
+            match self.cards[0].rank:
+                case Rank.ACE:
+                    return 11, 11
+                case Rank.JACK | Rank.QUEEN | Rank.KING | Rank.TEN:
+                    return 10, 10
+                case _:
+                    return self.cards[0].rank.value, self.cards[0].rank.value
+
         total1 = 0
         total11 = 0
 
