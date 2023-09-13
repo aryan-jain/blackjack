@@ -152,7 +152,9 @@ RichLog.-hidden {
     offset-y: 100%;
 }
 
-
+.active {
+    border: solid green;
+}
 
 Section {
     height: auto;

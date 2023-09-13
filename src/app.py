@@ -5,13 +5,18 @@ from rich.markdown import Markdown
 from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
+from textual.containers import (
+    Container,
+    Grid,
+    Horizontal,
+    ScrollableContainer,
+    Vertical,
+)
 from textual.reactive import reactive
 from textual.validation import Function, Number
 from textual.widgets import (
     Button,
     DataTable,
-    Digits,
     Footer,
     Header,
     Input,
@@ -289,9 +294,8 @@ class BlackjackApp(App):
                     return
 
                 else:
-                    self.player.balance -= (
-                        int(self.query_one("#bet", expect_type=Input).value) * 100
-                    )
+                    self.bet = int(self.query_one("#bet", expect_type=Input).value)
+                    self.player.balance -= self.bet * 100
                     self.player_balance = self.player.get_balance()
                     self.player.hand = Hand()
                     self.dealer_hand = Hand(dealer=True)
@@ -314,6 +318,12 @@ class BlackjackApp(App):
                 self.hit()
 
             case "stand":
+                self.stand()
+
+            case "double":
+                self.bet *= 2
+                self.query_one("#bet", expect_type=Input).value = str(self.bet)
+                self.hit()
                 self.stand()
 
     def hit(self):
@@ -343,17 +353,15 @@ class BlackjackApp(App):
         _, player_total = self.player.hand.get_total()
         total1, total11 = self.dealer_hand.get_total()
 
-        bet = int(self.query_one("#bet", expect_type=Input).value)
-
         if player_total == 21 and len(self.player.hand.cards) == 2:
             self.query_one("#result", expect_type=TextContent).update(
-                Text(f"Blackjack! You win ${bet*1.5:.2f}!", style="bold green")
+                Text(f"Blackjack! You win ${self.bet*1.5:.2f}!", style="bold green")
             )
-            self.player.balance = self.player.balance + 200 * bet + 50 * bet
+            self.player.balance = self.player.balance + 200 * self.bet + 50 * self.bet
             self.player_balance = self.player.get_balance()
         elif player_total > 21:
             self.query_one("#result", expect_type=TextContent).update(
-                Text(f"BUST! You lose ${bet:.2f}!", style="bold red")
+                Text(f"BUST! You lose ${self.bet:.2f}!", style="bold red")
             )
         else:
             while total1 < 17 and total11 < 18:
@@ -362,25 +370,25 @@ class BlackjackApp(App):
 
             if total1 > 21:
                 self.query_one("#result", expect_type=TextContent).update(
-                    Text(f"Dealer BUSTS! You win ${bet:.2f}!", style="bold green")
+                    Text(f"Dealer BUSTS! You win ${self.bet:.2f}!", style="bold green")
                 )
-                self.player.balance = self.player.balance + 200 * bet
+                self.player.balance = self.player.balance + 200 * self.bet
                 self.player_balance = self.player.get_balance()
             elif total11 > player_total:
                 self.query_one("#result", expect_type=TextContent).update(
-                    Text(f"Dealer wins! You lose ${bet:.2f}!", style="bold red")
+                    Text(f"Dealer wins! You lose ${self.bet:.2f}!", style="bold red")
                 )
             elif total11 == player_total:
                 self.query_one("#result", expect_type=TextContent).update(
                     Text(f"Push! You get your bet back!", style="bold yellow")
                 )
-                self.player.balance = self.player.balance + 100 * bet
+                self.player.balance = self.player.balance + 100 * self.bet
                 self.player_balance = self.player.get_balance()
             else:
                 self.query_one("#result", expect_type=TextContent).update(
-                    Text(f"You win ${bet:.2f}!", style="bold green")
+                    Text(f"You win ${self.bet:.2f}!", style="bold green")
                 )
-                self.player.balance = self.player.balance + 200 * bet
+                self.player.balance = self.player.balance + 200 * self.bet
                 self.player_balance = self.player.get_balance()
 
         self.query_one("#dealer_str_display", expect_type=SubTitle).update(

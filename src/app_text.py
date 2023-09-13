@@ -32,7 +32,7 @@ End your turn.
 You can only double on your first 2 cards. You double your bet and draw only 1 more card to end your turn.
 
 ### Split
-If you have 2 cards of the same rank, you can split them into 2 hands. You must bet the same amount on the second hand. You may only split 3 times, for a total of 4 hands.
+If you have 2 cards of the same rank, you can split them into 2 hands. You must bet the same amount on the second hand. For now, this app only supports splitting once. In the future, I may add the ability to split multiple times.
 
 ### Surrender
 You can only surrender on your first 2 cards. You lose half your bet and end your turn.
