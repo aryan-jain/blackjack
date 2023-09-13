@@ -76,15 +76,6 @@ class Card:
 
 
 @dataclass
-class Player:
-    name: str
-    balance: int = 0
-
-    def get_balance(self):
-        return f"${self.balance / 100:.2f}"
-
-
-@dataclass
 class Shoot:
     decks: int
     count: int = 0
@@ -119,6 +110,12 @@ class Hand:
             return f"{self.cards[0]} [ ? ]"
         else:
             return " ".join([str(card) for card in self.cards])
+
+    def unicode(self) -> str:
+        if self.dealer:
+            return f"{self.cards[0].unicode()} &#x1F0A0;"
+        else:
+            return " ".join([card.unicode() for card in self.cards])
 
     def add_card(self, card: Card):
         self.cards.append(card)
@@ -187,6 +184,16 @@ class Hand:
         return total1, total11
 
 
+@dataclass
+class Player:
+    name: str
+    balance: int = 0
+    hand: Hand = field(default_factory=Hand)
+
+    def get_balance(self):
+        return f"${self.balance / 100:.2f}"
+
+
 class StrategyMove(Enum):
     HIT = "H"
     STAND = "S"
@@ -208,6 +215,9 @@ class Strategy:
     ) -> Optional[StrategyMove]:
         dealer_card = dealer_hand.get_hand()
         player_cards = player_hand.get_hand()
+
+        if player_cards == "A,10":
+            return StrategyMove.STAND
 
         cards = player_cards.split(",")
 

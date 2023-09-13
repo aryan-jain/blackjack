@@ -128,7 +128,7 @@ DarkSwitch Switch {
 
 Screen>Container {
     height: 100%;
-    overflow: hidden;
+    overflow: scroll;
 }
 
 RichLog {
@@ -158,7 +158,8 @@ Section {
     height: auto;
     min-width: 40;
     margin: 1 2 4 2;
-
+    padding: 1;
+    overflow: scroll;
 }
 
 SectionTitle {
@@ -177,6 +178,7 @@ SubTitle {
 
 TextContent {
     margin: 1 0;
+    text-align: center;
 }
 
 Input.-valid {
@@ -209,6 +211,10 @@ LocationLink {
     color: $text;
     box-sizing: content-box;
     content-align: center middle;
+}
+
+Button {
+    margin: 1 0 0 1;
 }
 
 LocationLink:hover {
@@ -284,3 +290,15 @@ Version {
     text-align: center;
     padding: 1;
 }
+
+Container {
+    padding: 1;
+}
+
+# Horizontal {
+#     overflow: scroll;
+# }
+
+# Vertical {
+#     overflow: scroll;
+# }
