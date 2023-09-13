@@ -166,7 +166,7 @@ class Hand:
         total1 = 0
         total11 = 0
 
-        for card in self.cards:
+        for card in self.cards:  # Handle regular cards
             if card.rank.value >= 2 and card.rank.value <= 10:
                 total1 += card.rank.value
                 total11 += card.rank.value
@@ -174,6 +174,10 @@ class Hand:
                 total1 += 10
                 total11 += 10
             elif card.rank.value == 1:
+                continue
+
+        for card in self.cards:  # Handle Aces
+            if card.rank.value == 1:
                 if total1 + 11 > 21:
                     total1 += 1
                     total11 += 1

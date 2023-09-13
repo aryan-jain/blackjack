@@ -156,10 +156,10 @@ RichLog.-hidden {
 
 Section {
     height: auto;
-    min-width: 40;
+    # min-width: 40;
     margin: 1 2 4 2;
     padding: 1;
-    overflow: scroll;
+    overflow: auto;
 }
 
 SectionTitle {
@@ -209,6 +209,7 @@ LocationLink {
     padding: 1 2;
     background: $boost;
     color: $text;
+    border: solid white;
     box-sizing: content-box;
     content-align: center middle;
 }
@@ -231,6 +232,10 @@ LocationLink:hover {
 .hand {
     text-align: center;
     height: 6;
+}
+
+.buttons {
+    height: 5;
 }
 
 DataTable {

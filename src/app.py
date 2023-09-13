@@ -1,7 +1,5 @@
-import time
 from pathlib import Path
 from typing import Optional
-from bkp.pages.1_Play import play
 
 from rich.markdown import Markdown
 from rich.text import Text
@@ -231,6 +229,7 @@ class BlackjackApp(App):
                                 variant="error",
                                 disabled=True,
                             ),
+                            classes="buttons",
                         ),
                         TextContent(
                             Text(
@@ -260,58 +259,6 @@ class BlackjackApp(App):
         )
         yield Footer()
 
-    # async def watch_dealer_unicode(self, value: str) -> None:
-    #     await self.mount()
-    #     self.query_one("#dealer_hand", expect_type=TextContent).update(
-    #         Markdown(f"# {value}")
-    #     )
-
-    # async def watch_player_unicode(self, value: str) -> None:
-    #     await self.mount()
-    #     self.query_one("#player_hand", expect_type=TextContent).update(
-    #         Markdown(f"# {value}")
-    #     )
-
-    async def watch_recommended_strategy(self, value: str) -> None:
-        await self.mount()
-        self.query_one("#strategy_recommendation", expect_type=TextContent).update(
-            Text(f"Strategy Recommendation: {value}")
-        )
-
-    async def watch_count(self, value: int) -> None:
-        await self.mount()
-        self.query_one("#count_display", expect_type=TextContent).update(
-            Text(f"Count: {value}")
-        )
-
-    async def watch_cards_remaining(self, value: int) -> None:
-        await self.mount()
-        self.query_one("#cards_remaining", expect_type=TextContent).update(
-            Text(f"Cards remaining: {value}")
-        )
-
-    async def watch_dealer_str(self, value: str) -> None:
-        await self.mount()
-        self.query_one("#dealer_str_display", expect_type=SubTitle).update(value)
-
-    async def watch_dealer_total(self, value: str) -> None:
-        await self.mount()
-        self.query_one("#dealer_total_display", expect_type=SubTitle).update(value)
-
-    async def watch_player_str(self, value: str) -> None:
-        await self.mount()
-        self.query_one("#player_str_display", expect_type=SubTitle).update(value)
-
-    async def watch_player_total(self, value: str) -> None:
-        await self.mount()
-        self.query_one("#player_total_display", expect_type=SubTitle).update(value)
-
-    async def watch_player_balance(self, value: int) -> None:
-        await self.mount()
-        self.query_one("#balance", expect_type=TextContent).update(
-            Text(f"Balance: {value}")
-        )
-
     def is_valid_bet(self, bet: str) -> bool:
         try:
             return (
@@ -323,12 +270,6 @@ class BlackjackApp(App):
             return False
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        # if event.button.id == "add_player":
-        #     self.query_one("#players").mount(CreatePlayer())
-        # elif event.button.id == "remove_player":
-        #     players = self.query("CreatePlayer")
-        #     if players:
-        #         players.last().remove()
         match event.button.id:
             case "start_game":
                 event.button.disabled = True
@@ -346,12 +287,13 @@ class BlackjackApp(App):
             case "deal":
                 if not self.player:
                     return
+
                 else:
                     self.player.balance -= (
                         int(self.query_one("#bet", expect_type=Input).value) * 100
                     )
-                    self.player_balance = self.player.balance / 100
-
+                    self.player_balance = self.player.get_balance()
+                    self.player.hand = Hand()
                     self.dealer_hand = Hand(dealer=True)
 
                     for _ in range(2):
@@ -390,26 +332,74 @@ class BlackjackApp(App):
             self.query_one("#split").disabled = True
             self.query_one("#surrender").disabled = True
 
+        self.recommended_strategy = STRATEGY.get_strategy(
+            self.player.hand, self.dealer_hand
+        ).name
+
     def stand(self):
         self.dealer_hand.dealer = False
+        self.dealer_str = str(self.dealer_hand)
+
         _, player_total = self.player.hand.get_total()
         total1, total11 = self.dealer_hand.get_total()
 
+        bet = int(self.query_one("#bet", expect_type=Input).value)
+
         if player_total == 21 and len(self.player.hand.cards) == 2:
-            pass
+            self.query_one("#result", expect_type=TextContent).update(
+                Text(f"Blackjack! You win ${bet*1.5:.2f}!", style="bold green")
+            )
+            self.player.balance = self.player.balance + 200 * bet + 50 * bet
+            self.player_balance = self.player.get_balance()
+        elif player_total > 21:
+            self.query_one("#result", expect_type=TextContent).update(
+                Text(f"BUST! You lose ${bet:.2f}!", style="bold red")
+            )
+        else:
+            while total1 < 17 and total11 < 18:
+                self.draw_card(self.dealer_hand, True)
+                total1, total11 = self.dealer_hand.get_total()
 
+            if total1 > 21:
+                self.query_one("#result", expect_type=TextContent).update(
+                    Text(f"Dealer BUSTS! You win ${bet:.2f}!", style="bold green")
+                )
+                self.player.balance = self.player.balance + 200 * bet
+                self.player_balance = self.player.get_balance()
+            elif total11 > player_total:
+                self.query_one("#result", expect_type=TextContent).update(
+                    Text(f"Dealer wins! You lose ${bet:.2f}!", style="bold red")
+                )
+            elif total11 == player_total:
+                self.query_one("#result", expect_type=TextContent).update(
+                    Text(f"Push! You get your bet back!", style="bold yellow")
+                )
+                self.player.balance = self.player.balance + 100 * bet
+                self.player_balance = self.player.get_balance()
+            else:
+                self.query_one("#result", expect_type=TextContent).update(
+                    Text(f"You win ${bet:.2f}!", style="bold green")
+                )
+                self.player.balance = self.player.balance + 200 * bet
+                self.player_balance = self.player.get_balance()
 
-        while total1 < 17 and total11 < 18:
-            self.draw_card(self.dealer_hand, True)
-            total1, total11 = self.dealer_hand.get_total()
-        
+        self.query_one("#dealer_str_display", expect_type=SubTitle).update(
+            f"Total: {total11}"
+        )
 
+        self.query_one("#hit").disabled = True
+        self.query_one("#stand").disabled = True
+        self.query_one("#double").disabled = True
+        self.query_one("#split").disabled = True
+        self.query_one("#surrender").disabled = True
+        self.query_one("#deal").disabled = False
 
     def play_dealer(self):
         pass
 
     def draw_card(self, hand: Hand, dealer: bool) -> None:
         hand.add_card(self.shoot.draw())
+        self.cards_remaining = len(self.shoot.cards) - self.shoot.reshuffle
         total1, total11 = hand.get_total()
         if total11 == 21 and len(hand.cards) == 2:
             blackjack = True
@@ -540,6 +530,58 @@ class BlackjackApp(App):
 
     def action_toggle_dark(self):
         self.dark = not self.dark
+
+    async def watch_recommended_strategy(self, value: str) -> None:
+        await self.mount()
+        self.query_one("#strategy_recommendation", expect_type=TextContent).update(
+            Text(f"Strategy Recommendation: {value}")
+        )
+
+    async def watch_count(self, value: int) -> None:
+        await self.mount()
+        self.query_one("#count_display", expect_type=TextContent).update(
+            Text(f"Count: {value}")
+        )
+
+    async def watch_cards_remaining(self, value: int) -> None:
+        await self.mount()
+        self.query_one("#cards_remaining", expect_type=TextContent).update(
+            Text(f"Cards remaining: {value}")
+        )
+
+    async def watch_dealer_str(self, value: str) -> None:
+        await self.mount()
+        self.query_one("#dealer_str_display", expect_type=SubTitle).update(value)
+
+    async def watch_dealer_total(self, value: str) -> None:
+        await self.mount()
+        self.query_one("#dealer_total_display", expect_type=SubTitle).update(value)
+
+    async def watch_player_str(self, value: str) -> None:
+        await self.mount()
+        self.query_one("#player_str_display", expect_type=SubTitle).update(value)
+
+    async def watch_player_total(self, value: str) -> None:
+        await self.mount()
+        self.query_one("#player_total_display", expect_type=SubTitle).update(value)
+
+    async def watch_player_balance(self, value: str) -> None:
+        await self.mount()
+        self.query_one("#balance", expect_type=TextContent).update(
+            Text(f"Balance: {value}")
+        )
+
+    # async def watch_dealer_unicode(self, value: str) -> None:
+    #     await self.mount()
+    #     self.query_one("#dealer_hand", expect_type=TextContent).update(
+    #         Markdown(f"# {value}")
+    #     )
+
+    # async def watch_player_unicode(self, value: str) -> None:
+    #     await self.mount()
+    #     self.query_one("#player_hand", expect_type=TextContent).update(
+    #         Markdown(f"# {value}")
+    #     )
 
 
 if __name__ == "__main__":
