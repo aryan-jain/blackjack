@@ -1,6 +1,7 @@
 import time
 from pathlib import Path
 from typing import Optional
+from bkp.pages.1_Play import play
 
 from rich.markdown import Markdown
 from rich.text import Text
@@ -97,137 +98,6 @@ class CreatePlayer(Container):
                 self.query_one(Pretty).update([])
 
 
-class GamePlayer(Container):
-    def __init__(self, player: Player) -> None:
-        super().__init__()
-        self.player = player
-        self.hand = Hand()
-
-    def compose(self) -> ComposeResult:
-        in_progress = self.app.query_one("Game", expect_type=Game).in_progress
-
-        total1, total11 = self.hand.get_total()
-
-        hit = len(self.hand.cards) >= 2 and in_progress and total1 < 21
-        double = len(self.hand.cards) == 2 and in_progress
-
-        cards = self.hand.get_hand().split(",")
-        split = len(cards) == 2 and cards[0] == cards[1] and in_progress
-
-        total_str = f"{total1}/{total11}" if total1 != total11 else str(total1)
-
-        yield Vertical(
-            Label(self.player.name),
-            Horizontal(
-                Label("Balance: "), Digits(self.player.get_balance(), id="balance")
-            ),
-            Horizontal(
-                Label("Bet: "),
-                Input(
-                    "Bet",
-                    name="bet",
-                    validators=[
-                        Function(
-                            self.is_valid_bet,
-                            "Bet must be a multiple of 10 and less than your balance",
-                        ),
-                    ],
-                    disabled=in_progress,
-                ),
-                Button("Bet", id="bet", variant="success", disabled=in_progress),
-            ),
-            Label("Hand: "),
-            CardDisplay(id="player_hand"),
-            TextContent(Text(total_str), classes="total", id="total"),
-            Vertical(
-                Horizontal(
-                    Button("Hit", id="hit", variant="primary", disabled=not hit),
-                    Button(
-                        "Stand", id="stand", variant="warning", disabled=not in_progress
-                    ),
-                ),
-                Horizontal(
-                    Button(
-                        "Double", id="double", variant="success", disabled=not double
-                    ),
-                    Button("Split", id="split", variant="success", disabled=not split),
-                ),
-            ),
-        )
-
-    def is_valid_bet(self, bet: str) -> bool:
-        return (
-            int(bet) >= 10
-            and int(bet) <= int(self.player.balance / 100)
-            and (int(bet) % 10 == 0)
-        )
-
-
-class Game(Container):
-    def __init__(self, players: list[Player], num_decks: int) -> None:
-        super().__init__()
-        self.players = players
-        self.shoot = Shoot(decks=num_decks)
-        self.in_progress = False
-        self.remaining = reactive(len(self.shoot.cards) - self.shoot.reshuffle)
-        self.count = reactive(self.shoot.count)
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            TextContent(Text(f"Cards remaining until reshuffle: {self.remaining}")),
-            TextContent(Text(f"Current Count: {self.count}")),
-            Section(SectionTitle("Dealer"), CardDisplay(id="dealer_hand")),
-            Section(SectionTitle("Players"), Horizontal(id="player_hands")),
-            Button("Deal", id="deal", variant="success", disabled=self.in_progress),
-        )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "deal":
-            self.in_progress = True
-
-            dealer_hand = Hand(dealer=True)
-            dealer_cards = self.query_one("#dealer_hand", expect_type=CardDisplay)
-
-            for player in self.players:
-                self.query_one("#player_hands").mount(GamePlayer(player))
-
-            dealer_hand.add_card(self.shoot.draw())
-            dealer_cards.unicode_hand = f"{dealer_hand.cards[0].unicode()} &#x1F0A0;"
-
-            time.sleep(0.2)
-
-            player_games: list[GamePlayer] = []
-
-            for player in self.players[::-1]:
-                player_game = self.query_one("#player_hands", expect_type=GamePlayer)
-                player_games.append(player_game)
-                player_hand = player_game.hand
-
-                player_hand.add_card(self.shoot.draw())
-
-                player_cards = player_game.query_one(
-                    "#player_hand", expect_type=CardDisplay
-                )
-
-                player_cards.unicode_hand = " ".join(
-                    x.unicode() for x in player_hand.cards
-                )
-                player_cards.str_hand = str(player_hand)
-
-                time.sleep(0.2)
-
-            for game in player_games:
-                player_hand = game.hand
-                player_cards = game.query_one("#player_hand", expect_type=CardDisplay)
-
-                player_hand.add_card(self.shoot.draw())
-                player_cards.unicode_hand = " ".join(
-                    x.unicode() for x in player_hand.cards
-                )
-                player_cards.str_hand = str(player_hand)
-                time.sleep(0.2)
-
-
 class BlackjackApp(App):
     TITLE = "Blackjack"
     SUB_TITLE = "© Aryan Jain"
@@ -236,7 +106,7 @@ class BlackjackApp(App):
     ]
     CSS_PATH = Path(__file__).parent / "css/style.tcss"
 
-    player_balance = reactive(0)
+    player_balance = reactive("")
 
     dealer_unicode = reactive("")
     dealer_str = reactive("")
@@ -290,13 +160,19 @@ class BlackjackApp(App):
                 Column(
                     Section(
                         SectionTitle("Play"),
-                        CreatePlayer(),
                         # Horizontal(
                         #     Button("Add Player", id="add_player", variant="success"),
                         #     Button(
                         #         "Remove Player", id="remove_player", variant="error"
                         #     ),
                         # ),
+                        Label("Buy In: "),
+                        Input(
+                            placeholder="Buy In",
+                            id="buy_in",
+                            validators=[Number(minimum=10, maximum=10000)],
+                        ),
+                        Label("Number of Decks: "),
                         Input(
                             placeholder="Number of Decks",
                             id="num_decks",
@@ -327,6 +203,7 @@ class BlackjackApp(App):
                             f"Total: {self.dealer_total}", id="dealer_total_display"
                         ),
                         Rule(),
+                        TextContent(id="result"),
                         SubTitle("Player"),
                         # TextContent(
                         #     Markdown("# " + self.player_unicode),
@@ -361,6 +238,7 @@ class BlackjackApp(App):
                             ),
                             id="strategy_recommendation",
                         ),
+                        TextContent(f"Balance: {self.player_balance}", id="balance"),
                         Label("Bet: "),
                         Input(
                             placeholder="Bet",
@@ -428,11 +306,17 @@ class BlackjackApp(App):
         await self.mount()
         self.query_one("#player_total_display", expect_type=SubTitle).update(value)
 
+    async def watch_player_balance(self, value: int) -> None:
+        await self.mount()
+        self.query_one("#balance", expect_type=TextContent).update(
+            Text(f"Balance: {value}")
+        )
+
     def is_valid_bet(self, bet: str) -> bool:
         try:
             return (
                 int(bet) >= 10
-                and int(bet) <= int(self.player_balance / 100)
+                and int(bet) <= int(self.player.balance / 100)
                 and (int(bet) % 10 == 0)
             )
         except ValueError:
@@ -445,70 +329,114 @@ class BlackjackApp(App):
         #     players = self.query("CreatePlayer")
         #     if players:
         #         players.last().remove()
-        if event.button.id == "start_game":
-            event.button.disabled = True
-            self.player = self.query_one(
-                "CreatePlayer", expect_type=CreatePlayer
-            ).player
+        match event.button.id:
+            case "start_game":
+                event.button.disabled = True
+                buy_in = self.query_one("#buy_in", expect_type=Input).value
+                self.player = Player("player", int(buy_in) * 100)
 
-            self.num_decks = self.query_one("#num_decks", expect_type=Input)
-            self.shoot = Shoot(decks=int(self.num_decks.value))
-            self.cards_remaining = len(self.shoot.cards) - self.shoot.reshuffle
+                self.num_decks = self.query_one("#num_decks", expect_type=Input)
+                self.shoot = Shoot(decks=int(self.num_decks.value))
+                self.cards_remaining = len(self.shoot.cards) - self.shoot.reshuffle
 
-            self.app.query_one(".location-game").scroll_visible(duration=0.5, top=True)
-
-        elif event.button.id == "deal":
-            if not self.player:
-                return
-            else:
-                self.player.balance -= (
-                    int(self.query_one("#bet", expect_type=Input).value) * 100
+                self.app.query_one(".location-game").scroll_visible(
+                    duration=0.5, top=True
                 )
 
-                self.dealer_hand = Hand(dealer=True)
+            case "deal":
+                if not self.player:
+                    return
+                else:
+                    self.player.balance -= (
+                        int(self.query_one("#bet", expect_type=Input).value) * 100
+                    )
+                    self.player_balance = self.player.balance / 100
 
-                for _ in range(2):
-                    self.draw_card(self.player.hand, False)
-                    time.sleep(0.2)
-                    self.draw_card(self.dealer_hand, True)
-                    time.sleep(0.2)
+                    self.dealer_hand = Hand(dealer=True)
 
-                self.query_one("#hit").disabled = False
-                self.query_one("#stand").disabled = False
-                self.query_one("#double").disabled = False
-                self.query_one("#split").disabled = False
-                self.query_one("#surrender").disabled = False
+                    for _ in range(2):
+                        self.draw_card(self.player.hand, False)
+                        self.draw_card(self.dealer_hand, True)
 
-                self.recommended_strategy = STRATEGY.get_strategy(
-                    self.player.hand, self.dealer_hand
-                )
+                    self.query_one("#hit").disabled = False
+                    self.query_one("#stand").disabled = False
+                    self.query_one("#double").disabled = False
+                    self.query_one("#split").disabled = False
+                    self.query_one("#surrender").disabled = False
 
-        elif event.button.id == "hit":
-            if not self.player:
-                return
-            self.draw_card(self.player.hand, False)
+                    self.recommended_strategy = STRATEGY.get_strategy(
+                        self.player.hand, self.dealer_hand
+                    ).name
+
+            case "hit":
+                self.hit()
+
+            case "stand":
+                self.stand()
+
+    def hit(self):
+        self.draw_card(self.player.hand, False)
+        self.query_one("#double").disabled = True
+        self.query_one("#split").disabled = True
+
+        self.recommended_strategy = STRATEGY.get_strategy(
+            self.player.hand, self.dealer_hand
+        )
+
+        total1, total11 = self.player.hand.get_total()
+        if total1 >= 21 or total11 == 21:
+            self.query_one("#hit").disabled = True
             self.query_one("#double").disabled = True
             self.query_one("#split").disabled = True
+            self.query_one("#surrender").disabled = True
 
-            self.recommended_strategy = STRATEGY.get_strategy(
-                self.player.hand, self.dealer_hand
-            )
+    def stand(self):
+        self.dealer_hand.dealer = False
+        _, player_total = self.player.hand.get_total()
+        total1, total11 = self.dealer_hand.get_total()
+
+        if player_total == 21 and len(self.player.hand.cards) == 2:
+            pass
+
+
+        while total1 < 17 and total11 < 18:
+            self.draw_card(self.dealer_hand, True)
+            total1, total11 = self.dealer_hand.get_total()
+        
+
+
+    def play_dealer(self):
+        pass
 
     def draw_card(self, hand: Hand, dealer: bool) -> None:
         hand.add_card(self.shoot.draw())
         total1, total11 = hand.get_total()
+        if total11 == 21 and len(hand.cards) == 2:
+            blackjack = True
+        else:
+            blackjack = False
+
         if dealer:
             self.dealer_unicode = hand.unicode()
             self.dealer_str = str(hand)
-            self.dealer_total = str(total11) if total1 <= 21 else "BUST!"
+            if blackjack:
+                self.dealer_total = "Blackjack :("
+            elif total1 > 21:
+                self.dealer_total = "BUST!"
+            else:
+                self.dealer_total = f"Total: {total11}"
         else:
             self.player_unicode = hand.unicode()
             self.player_str = str(hand)
-            if total1 > 21:
+            if blackjack:
+                self.player_total = "Blackjack! :)"
+            elif total1 > 21:
                 self.player_total = "BUST!"
             else:
                 self.player_total = (
-                    f"{total1}/{total11}" if total1 != total11 else str(total11)
+                    f"Total: {total1}/{total11}"
+                    if total1 != total11
+                    else f"Total: {total1}"
                 )
         self.count = self.shoot.count
 

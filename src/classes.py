@@ -210,9 +210,7 @@ class Strategy:
         self.soft_totals = pd.read_csv("src/data/soft_totals.csv").set_index("Hand")
         self.splits = pd.read_csv("src/data/splits.csv").set_index("Hand")
 
-    def get_strategy(
-        self, player_hand: Hand, dealer_hand: Hand
-    ) -> Optional[StrategyMove]:
+    def get_strategy(self, player_hand: Hand, dealer_hand: Hand) -> StrategyMove:
         dealer_card = dealer_hand.get_hand()
         player_cards = player_hand.get_hand()
 
