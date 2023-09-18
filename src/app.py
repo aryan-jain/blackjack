@@ -5,14 +5,8 @@ from rich.markdown import Markdown
 from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
-from textual.containers import (
-    Container,
-    Grid,
-    Horizontal,
-    ScrollableContainer,
-    Vertical,
-)
-from textual.reactive import reactive
+from textual.containers import Container, Horizontal, Vertical
+from textual.reactive import reactive, var
 from textual.validation import Function, Number
 from textual.widgets import (
     Button,
@@ -26,21 +20,21 @@ from textual.widgets import (
     Static,
 )
 
+from card import Card, Shoot
 from classes import (
     AboveFold,
     Body,
     Column,
-    Hand,
-    Player,
     QuickAccess,
     Section,
     SectionTitle,
-    Shoot,
-    Strategy,
     SubTitle,
     TextContent,
 )
+from enums import HandState
+from hand import Hand, HandDisplay
 from src.app_text import RULES, STRATEGY_INTRO, WELCOME
+from strategy import Strategy
 
 STRATEGY = Strategy()
 
@@ -109,15 +103,12 @@ class BlackjackApp(App):
     ]
     CSS_PATH = Path(__file__).parent / "css/style.tcss"
 
+    balance = var(0)
     player_balance = reactive("")
+    hand_idx = var(0)
 
-    dealer_unicode = reactive("")
     dealer_str = reactive("")
-    player_unicode = reactive("")
-    player_str = reactive("")
-
     dealer_total = reactive("")
-    player_total = reactive("")
 
     count = reactive(0)
     cards_remaining = reactive(0)
@@ -163,12 +154,6 @@ class BlackjackApp(App):
                 Column(
                     Section(
                         SectionTitle("Play"),
-                        # Horizontal(
-                        #     Button("Add Player", id="add_player", variant="success"),
-                        #     Button(
-                        #         "Remove Player", id="remove_player", variant="error"
-                        #     ),
-                        # ),
                         Label("Buy In: "),
                         Input(
                             placeholder="Buy In",
@@ -196,27 +181,12 @@ class BlackjackApp(App):
                         ),
                         TextContent(Text(f"Count: {self.count}"), id="count_display"),
                         SubTitle("Dealer"),
-                        # TextContent(
-                        #     Markdown("# " + self.dealer_unicode),
-                        #     classes="hand",
-                        #     id="dealer_hand",
-                        # ),
                         SubTitle(self.dealer_str, id="dealer_str_display"),
                         SubTitle(
                             f"Total: {self.dealer_total}", id="dealer_total_display"
                         ),
                         Rule(),
-                        TextContent(id="result"),
-                        SubTitle("Player"),
-                        # TextContent(
-                        #     Markdown("# " + self.player_unicode),
-                        #     classes="hand",
-                        #     id="player_hand",
-                        # ),
-                        SubTitle(self.player_str, id="player_str_display"),
-                        SubTitle(
-                            f"Total: {self.player_total}", id="player_total_display"
-                        ),
+                        Horizontal(id="player_hands", classes="hands"),
                         Horizontal(
                             Button("Hit", id="hit", variant="primary", disabled=True),
                             Button(
@@ -268,7 +238,7 @@ class BlackjackApp(App):
         try:
             return (
                 int(bet) >= 10
-                and int(bet) <= int(self.player.balance / 100)
+                and int(bet) <= int(self.balance / 100)
                 and (int(bet) % 10 == 0)
             )
         except ValueError:
@@ -279,7 +249,8 @@ class BlackjackApp(App):
             case "start_game":
                 event.button.disabled = True
                 buy_in = self.query_one("#buy_in", expect_type=Input).value
-                self.player = Player("player", int(buy_in) * 100)
+                self.balance = int(buy_in) * 100
+                self.player_balance = f"${self.balance / 100:.2f}"
 
                 self.num_decks = self.query_one("#num_decks", expect_type=Input)
                 self.shoot = Shoot(decks=int(self.num_decks.value))
@@ -290,29 +261,36 @@ class BlackjackApp(App):
                 )
 
             case "deal":
-                if not self.player:
-                    return
+                hand = Hand()
+                hand.bet = int(self.query_one("#bet", expect_type=Input).value)
+                self.balance -= hand.bet * 100
+                self.player_balance = f"${self.balance / 100:.2f}"
 
+                self.dealer_hand = Hand(dealer=True)
+
+                for _ in range(2):
+                    self.draw_card()
+                    self.draw_card(dealer=True)
+
+                self.active_hand = HandDisplay(hand=hand)
+                self.active_hand.add_class("active")
+
+                self.query_one("#player_hands").mount(self.active_hand)
+
+                _, total11 = hand.get_total()
+                if total11 == 21:
+                    hand.state = HandState.BLACKJACK
                 else:
-                    self.bet = int(self.query_one("#bet", expect_type=Input).value)
-                    self.player.balance -= self.bet * 100
-                    self.player_balance = self.player.get_balance()
-                    self.player.hand = Hand()
-                    self.dealer_hand = Hand(dealer=True)
-
-                    for _ in range(2):
-                        self.draw_card(self.player.hand, False)
-                        self.draw_card(self.dealer_hand, True)
-
                     self.query_one("#hit").disabled = False
-                    self.query_one("#stand").disabled = False
                     self.query_one("#double").disabled = False
                     self.query_one("#split").disabled = False
-                    self.query_one("#surrender").disabled = False
 
-                    self.recommended_strategy = STRATEGY.get_strategy(
-                        self.player.hand, self.dealer_hand
-                    ).name
+                self.query_one("#stand").disabled = False
+                self.query_one("#surrender").disabled = False
+
+                self.recommended_strategy = STRATEGY.get_strategy(
+                    hand, self.dealer_hand
+                ).name
 
             case "hit":
                 self.hit()
@@ -321,80 +299,88 @@ class BlackjackApp(App):
                 self.stand()
 
             case "double":
-                self.bet *= 2
-                self.query_one("#bet", expect_type=Input).value = str(self.bet)
+                self.active_hand.hand.bet *= 2
+                self.balance -= self.active_hand.hand.bet * 100
+                self.player_balance = f"${self.balance / 100:.2f}"
                 self.hit()
                 self.stand()
 
+            case "surrender":
+                self.surrender()
+
+            case "split":
+                self.split()
+
     def hit(self):
-        self.draw_card(self.player.hand, False)
+        hand = self.active_hand.hand
+
+        self.draw_card()
         self.query_one("#double").disabled = True
         self.query_one("#split").disabled = True
 
-        self.recommended_strategy = STRATEGY.get_strategy(
-            self.player.hand, self.dealer_hand
-        )
-
-        total1, total11 = self.player.hand.get_total()
+        total1, total11 = hand.get_total()
         if total1 >= 21 or total11 == 21:
             self.query_one("#hit").disabled = True
-            self.query_one("#double").disabled = True
-            self.query_one("#split").disabled = True
             self.query_one("#surrender").disabled = True
 
-        self.recommended_strategy = STRATEGY.get_strategy(
-            self.player.hand, self.dealer_hand
-        ).name
+        self.recommended_strategy = STRATEGY.get_strategy(hand, self.dealer_hand).name
+
+        self.active_hand.update()
 
     def stand(self):
-        self.dealer_hand.dealer = False
-        self.dealer_str = str(self.dealer_hand)
+        self.active_hand.remove_class("active")
+        self.active_hand.add_class("inactive")
 
-        _, player_total = self.player.hand.get_total()
-        total1, total11 = self.dealer_hand.get_total()
+        if self.active_hand.hand.state == HandState.ACTIVE:
+            self.active_hand.hand.state = HandState.STAND
 
-        if player_total == 21 and len(self.player.hand.cards) == 2:
-            self.query_one("#result", expect_type=TextContent).update(
-                Text(f"Blackjack! You win ${self.bet*1.5:.2f}!", style="bold green")
-            )
-            self.player.balance = self.player.balance + 200 * self.bet + 50 * self.bet
-            self.player_balance = self.player.get_balance()
-        elif player_total > 21:
-            self.query_one("#result", expect_type=TextContent).update(
-                Text(f"BUST! You lose ${self.bet:.2f}!", style="bold red")
-            )
-        else:
-            while total1 < 17 and total11 < 18:
-                self.draw_card(self.dealer_hand, True)
-                total1, total11 = self.dealer_hand.get_total()
+        hands = self.query(HandDisplay)
+        if self.hand_idx < len(hands) - 1:
+            self.hand_idx += 1
+            self.active_hand = hands[self.hand_idx]
+            self.active_hand.remove_class("inactive")
+            self.active_hand.add_class("active")
+            if len(self.active_hand.hand.cards) < 2:
+                self.draw_card()
+            self.active_hand.update()
 
-            if total1 > 21:
-                self.query_one("#result", expect_type=TextContent).update(
-                    Text(f"Dealer BUSTS! You win ${self.bet:.2f}!", style="bold green")
-                )
-                self.player.balance = self.player.balance + 200 * self.bet
-                self.player_balance = self.player.get_balance()
-            elif total11 > player_total:
-                self.query_one("#result", expect_type=TextContent).update(
-                    Text(f"Dealer wins! You lose ${self.bet:.2f}!", style="bold red")
-                )
-            elif total11 == player_total:
-                self.query_one("#result", expect_type=TextContent).update(
-                    Text(f"Push! You get your bet back!", style="bold yellow")
-                )
-                self.player.balance = self.player.balance + 100 * self.bet
-                self.player_balance = self.player.get_balance()
+            _, total11 = self.active_hand.hand.get_total()
+            if total11 == 21:
+                self.active_hand.hand.state = HandState.BLACKJACK
             else:
-                self.query_one("#result", expect_type=TextContent).update(
-                    Text(f"You win ${self.bet:.2f}!", style="bold green")
-                )
-                self.player.balance = self.player.balance + 200 * self.bet
-                self.player_balance = self.player.get_balance()
+                self.query_one("#hit").disabled = False
+                self.query_one("#double").disabled = False
+                self.query_one("#split").disabled = False
 
-        self.query_one("#dealer_str_display", expect_type=SubTitle).update(
-            f"Total: {total11}"
-        )
+            self.query_one("#stand").disabled = False
+            self.query_one("#surrender").disabled = False
 
+        else:
+            self.end_round()
+
+    def surrender(self):
+        self.active_hand.hand.state = HandState.SURRENDER
+        self.balance += self.active_hand.hand.bet * 50
+        self.player_balance = f"${self.balance / 100:.2f}"
+        self.active_hand.update()
+        self.stand()
+
+    def split(self):
+        hand = self.active_hand.hand
+        split_card = hand.cards.pop()
+
+        self.balance = self.balance - hand.bet * 100
+        self.player_balance = f"${self.balance / 100:.2f}"
+
+        self.draw_card()
+
+        new_hand = HandDisplay(hand=Hand())
+        new_hand.hand.add_card(split_card)
+        new_hand.update()
+
+        self.query_one("#player_hands").mount(new_hand)
+
+    def end_round(self) -> None:
         self.query_one("#hit").disabled = True
         self.query_one("#stand").disabled = True
         self.query_one("#double").disabled = True
@@ -402,40 +388,66 @@ class BlackjackApp(App):
         self.query_one("#surrender").disabled = True
         self.query_one("#deal").disabled = False
 
-    def play_dealer(self):
-        pass
+        # Run Dealer Hand
+        self.dealer_hand.dealer = False
+        total1, total11 = self.dealer_hand.get_total()
+        while total1 < 17 and total11 < 18:
+            self.draw_card(dealer=True)
+            total1, total11 = self.dealer_hand.get_total()
 
-    def draw_card(self, hand: Hand, dealer: bool) -> None:
-        hand.add_card(self.shoot.draw())
-        self.cards_remaining = len(self.shoot.cards) - self.shoot.reshuffle
-        total1, total11 = hand.get_total()
-        if total11 == 21 and len(hand.cards) == 2:
-            blackjack = True
-        else:
-            blackjack = False
+        self.dealer_str = str(self.dealer_hand)
+        self.dealer_total = f"Total: {total11}"
 
+        hands = self.query(HandDisplay)
+
+        for hand in hands:
+            match hand.hand.state:
+                case HandState.BLACKJACK:
+                    hand.result = f"Blackjack! You win ${hand.hand.bet*1.5:.2f}!"
+                    self.balance += hand.hand.bet * 250
+                case HandState.BUST:
+                    hand.result = f"BUST! You lose ${hand.hand.bet:.2f}!"
+                case HandState.SURRENDER:
+                    hand.result = f"Surrendered! You get back ${hand.hand.bet*0.5:.2f}!"
+                    self.balance += hand.hand.bet * 150
+                case HandState.STAND:
+                    _, player_total = hand.hand.get_total()
+                    if total1 > 21:
+                        hand.result = f"Dealer BUSTS! You win ${hand.hand.bet:.2f}!"
+                        self.balance += hand.hand.bet * 200
+                    elif total11 > player_total:
+                        hand.result = f"Dealer wins! You lose ${hand.hand.bet:.2f}!"
+                    elif total11 == player_total:
+                        hand.result = f"Push! You get back ${hand.hand.bet:.2f}!"
+                        self.balance += hand.hand.bet * 100
+                    else:
+                        hand.result = f"You win ${hand.hand.bet:.2f}!"
+                        self.balance += hand.hand.bet * 200
+            hand.update()
+
+        self.player_balance = f"${self.balance / 100:.2f}"
+
+    def draw_card(self, dealer: bool = False) -> None:
         if dealer:
-            self.dealer_unicode = hand.unicode()
-            self.dealer_str = str(hand)
-            if blackjack:
-                self.dealer_total = "Blackjack :("
+            hand = self.dealer_hand
+            hand.add_card(self.shoot.draw())
+            total1, total11 = hand.get_total()
+            if total11 == 21 and len(hand.cards) == 2:
+                hand.state = HandState.BLACKJACK
+                if dealer:
+                    self.dealer_total = "Blackjack :("
             elif total1 > 21:
-                self.dealer_total = "BUST!"
+                hand.state = HandState.BUST
+                if dealer:
+                    self.dealer_total = "BUST!"
             else:
                 self.dealer_total = f"Total: {total11}"
         else:
-            self.player_unicode = hand.unicode()
-            self.player_str = str(hand)
-            if blackjack:
-                self.player_total = "Blackjack! :)"
-            elif total1 > 21:
-                self.player_total = "BUST!"
-            else:
-                self.player_total = (
-                    f"Total: {total1}/{total11}"
-                    if total1 != total11
-                    else f"Total: {total1}"
-                )
+            hand = self.active_hand.hand
+            hand.add_card(self.shoot.draw())
+            self.active_hand.update()
+
+        self.cards_remaining = len(self.shoot.cards) - self.shoot.reshuffle
         self.count = self.shoot.count
 
     @on(Input.Changed)
@@ -567,11 +579,19 @@ class BlackjackApp(App):
 
     async def watch_player_str(self, value: str) -> None:
         await self.mount()
-        self.query_one("#player_str_display", expect_type=SubTitle).update(value)
+        self.query_one("#player_str_display", expect_type=TextContent).update(value)
+
+    async def watch_player_str2(self, value: str) -> None:
+        await self.mount()
+        self.query_one("#player_str_display2", expect_type=TextContent).update(value)
 
     async def watch_player_total(self, value: str) -> None:
         await self.mount()
         self.query_one("#player_total_display", expect_type=SubTitle).update(value)
+
+    async def watch_player_total2(self, value: str) -> None:
+        await self.mount()
+        self.query_one("#player_total_display2", expect_type=SubTitle).update(value)
 
     async def watch_player_balance(self, value: str) -> None:
         await self.mount()

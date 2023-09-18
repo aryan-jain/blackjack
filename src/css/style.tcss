@@ -128,7 +128,7 @@ DarkSwitch Switch {
 
 Screen>Container {
     height: 100%;
-    overflow: scroll;
+    overflow: auto;
 }
 
 RichLog {
@@ -150,10 +150,6 @@ RichLog:focus {
 
 RichLog.-hidden {
     offset-y: 100%;
-}
-
-.active {
-    border: solid green;
 }
 
 Section {
@@ -231,13 +227,22 @@ LocationLink:hover {
     margin: 1 0;
 }
 
-.hand {
-    text-align: center;
-    height: 6;
+.player_hands {
+    height: 5;
+    width: 100%;
+    overflow: scroll;
+}
+
+.inactive {
+    border: dashed gray;
 }
 
 .buttons {
     height: 5;
+}
+
+.active {
+    border: solid green;
 }
 
 DataTable {
