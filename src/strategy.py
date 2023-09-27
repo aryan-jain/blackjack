@@ -21,6 +21,9 @@ class Strategy:
 
         cards = player_cards.split(",")
 
+        if dealer_card not in self.splits.columns:
+            return StrategyMove.STAND
+
         if len(cards) == 2:
             if cards[0] == cards[1]:
                 split_strategy = self.splits.loc[player_cards, dealer_card]

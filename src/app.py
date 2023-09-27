@@ -226,7 +226,7 @@ class BlackjackApp(App):
             case "deal":
                 while hands := self.query(HandDisplay):
                     hands.last().remove()
-
+                self.hand_idx = 0
                 hand = Hand()
                 self.active_hand = HandDisplay(hand=hand)
                 self.active_hand.add_class("active")
@@ -270,7 +270,6 @@ class BlackjackApp(App):
                 self.balance -= self.active_hand.hand.bet * 100
                 self.player_balance = f"${self.balance / 100:.2f}"
                 await self.hit()
-                await asyncio.sleep(0.5)
                 await self.stand()
 
             case "surrender":
@@ -290,7 +289,6 @@ class BlackjackApp(App):
         if total1 >= 21 or total11 == 21:
             self.query_one("#hit").disabled = True
             self.query_one("#surrender").disabled = True
-            await self.stand()
 
         self.recommended_strategy = STRATEGY.get_strategy(hand, self.dealer_hand).name
 
