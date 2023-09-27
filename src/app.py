@@ -250,6 +250,9 @@ class BlackjackApp(App):
                 else:
                     self.query_one("#hit").disabled = False
                     self.query_one("#double").disabled = False
+
+                card1, card2 = hand.get_hand().split(",")
+                if card1 == card2:
                     self.query_one("#split").disabled = False
 
                 self.query_one("#stand").disabled = False
@@ -261,6 +264,8 @@ class BlackjackApp(App):
 
             case "hit":
                 await self.hit()
+                if self.active_hand.hand.state == HandState.BUST:
+                    await self.stand()
 
             case "stand":
                 await self.stand()
