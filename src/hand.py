@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from tkinter import Widget
 
 from textual.app import ComposeResult
 from textual.reactive import reactive
