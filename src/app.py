@@ -244,23 +244,29 @@ class BlackjackApp(App):
 
                 self.dealer_str = str(self.dealer_hand)
 
-                _, total11 = hand.get_total()
-                if total11 == 21:
+                _, player_total = hand.get_total()
+                if player_total == 21:
                     hand.state = HandState.BLACKJACK
                 else:
                     self.query_one("#hit").disabled = False
                     self.query_one("#double").disabled = False
+                    self.query_one("#surrender").disabled = False
 
                 card1, card2 = hand.cards
                 if min(card1.rank.value, 10) == min(card2.rank.value, 10):
                     self.query_one("#split").disabled = False
 
                 self.query_one("#stand").disabled = False
-                self.query_one("#surrender").disabled = False
 
                 self.recommended_strategy = STRATEGY.get_strategy(
                     hand, self.dealer_hand
                 ).name
+
+                _, dealer_total = self.dealer_hand.get_total()
+                if dealer_total == 21:
+                    self.dealer_total = "Blackjack :("
+                    self.dealer_hand.state = HandState.BLACKJACK
+                    await self.stand()
 
             case "hit":
                 await self.hit()
@@ -373,15 +379,23 @@ class BlackjackApp(App):
             total1, total11 = self.dealer_hand.get_total()
 
         self.dealer_str = str(self.dealer_hand)
-        self.dealer_total = f"Total: {total11}"
+        self.dealer_total = (
+            f"Total: {total11}"
+            if not self.dealer_hand.state == HandState.BLACKJACK
+            else "Blackjack :("
+        )
 
         hands = self.query(HandDisplay)
 
         for hand in hands:
             match hand.hand.state:
                 case HandState.BLACKJACK:
-                    hand.result = f"Blackjack! You win ${hand.hand.bet*1.5:.2f}!"
-                    self.balance += hand.hand.bet * 250
+                    if self.dealer_hand.state == HandState.BLACKJACK:
+                        hand.result = f"Push! You get back ${hand.hand.bet:.2f}!"
+                        self.balance += hand.hand.bet * 100
+                    else:
+                        hand.result = f"Blackjack! You win ${hand.hand.bet*1.5:.2f}!"
+                        self.balance += hand.hand.bet * 250
                 case HandState.BUST:
                     hand.result = f"BUST! You lose ${hand.hand.bet:.2f}!"
                 case HandState.SURRENDER:
