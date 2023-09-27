@@ -71,3 +71,8 @@ class Shoot:
             self.count -= 1
 
         return card
+
+    def shuffle(self):
+        self.cards = [Card(suit, rank) for suit in Suit for rank in Rank] * self.decks
+        random.shuffle(self.cards)
+        self.count = 0

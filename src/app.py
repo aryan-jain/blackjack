@@ -420,6 +420,11 @@ class BlackjackApp(App):
             await hand.update()
 
         self.player_balance = f"${self.balance / 100:.2f}"
+
+        if self.shoot.reshuffle >= len(self.shoot.cards):
+            self.shoot.shuffle()
+            self.cards_remaining = len(self.shoot.cards) - self.shoot.reshuffle
+
         self.query_one("#deal", Button).disabled = False
 
     async def draw_card(self, dealer: bool = False) -> None:
