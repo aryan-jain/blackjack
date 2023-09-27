@@ -224,6 +224,7 @@ class BlackjackApp(App):
                 )
 
             case "deal":
+                self.query_one("#deal", Button).disabled = True
                 while hands := self.query(HandDisplay):
                     hands.last().remove()
                 self.hand_idx = 0
@@ -417,6 +418,7 @@ class BlackjackApp(App):
             await hand.update()
 
         self.player_balance = f"${self.balance / 100:.2f}"
+        self.query_one("#deal", Button).disabled = False
 
     async def draw_card(self, dealer: bool = False) -> None:
         if dealer:
