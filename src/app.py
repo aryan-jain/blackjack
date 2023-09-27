@@ -250,12 +250,14 @@ class BlackjackApp(App):
                     hand.state = HandState.BLACKJACK
                 else:
                     self.query_one("#hit").disabled = False
-                    self.query_one("#double").disabled = False
                     self.query_one("#surrender").disabled = False
 
-                card1, card2 = hand.cards
-                if min(card1.rank.value, 10) == min(card2.rank.value, 10):
-                    self.query_one("#split").disabled = False
+                    if self.balance >= hand.bet * 100:
+                        self.query_one("#double").disabled = False
+
+                        card1, card2 = hand.cards
+                        if min(card1.rank.value, 10) == min(card2.rank.value, 10):
+                            self.query_one("#split").disabled = False
 
                 self.query_one("#stand").disabled = False
 
