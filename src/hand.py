@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
+from tkinter import Widget
 
 from textual.app import ComposeResult
-from textual.containers import Container
 from textual.reactive import reactive
+from textual.widget import Widget
 
 from card import Card
 from classes import TextContent
@@ -99,10 +100,10 @@ class Hand:
         return total1, total11
 
     def get_bet(self) -> str:
-        return f"${self.bet / 100:.2f}"
+        return f"${self.bet:.2f}"
 
 
-class HandDisplay(Container):
+class HandDisplay(Widget):
     cards = reactive("")
     total = reactive("")
     bet = reactive("")
@@ -113,10 +114,10 @@ class HandDisplay(Container):
         self.hand = hand
 
     def compose(self) -> ComposeResult:
-        yield TextContent(self.cards, id="cards")
-        yield TextContent(self.total, id="total")
-        yield TextContent(self.bet, id="bet")
-        yield TextContent(self.result, id="result")
+        yield TextContent(self.cards, id="hand_cards")
+        yield TextContent(self.total, id="hand_total")
+        yield TextContent(self.bet, id="hand_bet")
+        yield TextContent(self.result, id="hand_result")
 
     def on_mount(self) -> None:
         self.cards = str(self.hand)
@@ -130,7 +131,9 @@ class HandDisplay(Container):
         else:
             self.total = f"Total: {total11}"
 
-    def update(self) -> None:
+    async def update(self) -> None:
+        await self.mount()
+        self.log(self.tree)
         total1, total11 = self.hand.get_total()
         if total11 == 21 and len(self.hand.cards) == 2:
             self.total = "Blackjack! :)"
@@ -145,7 +148,7 @@ class HandDisplay(Container):
 
         self.bet = self.hand.get_bet()
 
-        self.query_one("#cards", expect_type=TextContent).update(str(self.hand))
-        self.query_one("#total", expect_type=TextContent).update(self.total)
-        self.query_one("#bet", expect_type=TextContent).update(self.bet)
-        self.query_one("#result", expect_type=TextContent).update(self.result)
+        self.query_one("#hand_cards", expect_type=TextContent).update(str(self.hand))
+        self.query_one("#hand_total", expect_type=TextContent).update(self.total)
+        self.query_one("#hand_bet", expect_type=TextContent).update(self.bet)
+        self.query_one("#hand_result", expect_type=TextContent).update(self.result)

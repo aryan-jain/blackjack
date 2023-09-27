@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from typing import Optional
 
@@ -5,7 +6,7 @@ from rich.markdown import Markdown
 from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, ScrollableContainer
 from textual.reactive import reactive, var
 from textual.validation import Function, Number
 from textual.widgets import (
@@ -20,7 +21,7 @@ from textual.widgets import (
     Static,
 )
 
-from card import Card, Shoot
+from card import Shoot
 from classes import (
     AboveFold,
     Body,
@@ -55,44 +56,6 @@ class Welcome(Container):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.app.query_one(".location-rules").scroll_visible(duration=0.5, top=True)
-
-
-class CreatePlayer(Container):
-    player: Optional[Player] = None
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Label("Name: "),
-            Input(placeholder="Name", id="name"),
-            Label("Buy In: "),
-            Input(placeholder="Buy In", id="buy_in"),
-            Pretty([]),
-            Button(
-                "Save Player",
-                id="create_player",
-                variant="success",
-                disabled=self.player is not None,
-            ),
-        )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "create_player":
-            name = self.query_one("#name", expect_type=Input).value
-            buy_in = self.query_one("#buy_in", expect_type=Input).value
-            self.player = Player(name=name, balance=int(buy_in) * 100)
-
-            # self.app.query_one(".location-play").scroll_visible(duration=0.5, top=True)
-
-    @on(Input.Changed)
-    def show_invalid_reasons(self, event: Input.Changed) -> None:
-        # Updating the UI to show the reasons why validation failed
-        if event.input.id == "buy_in":
-            if event.validation_result and not event.validation_result.is_valid:
-                self.query_one(Pretty).update(
-                    event.validation_result.failure_descriptions
-                )
-            else:
-                self.query_one(Pretty).update([])
 
 
 class BlackjackApp(App):
@@ -186,7 +149,7 @@ class BlackjackApp(App):
                             f"Total: {self.dealer_total}", id="dealer_total_display"
                         ),
                         Rule(),
-                        Horizontal(id="player_hands", classes="hands"),
+                        ScrollableContainer(id="player_hands", classes="player_hands"),
                         Horizontal(
                             Button("Hit", id="hit", variant="primary", disabled=True),
                             Button(
@@ -244,7 +207,7 @@ class BlackjackApp(App):
         except ValueError:
             return False
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
         match event.button.id:
             case "start_game":
                 event.button.disabled = True
@@ -261,7 +224,14 @@ class BlackjackApp(App):
                 )
 
             case "deal":
+                while hands := self.query(HandDisplay):
+                    hands.last().remove()
+
                 hand = Hand()
+                self.active_hand = HandDisplay(hand=hand)
+                self.active_hand.add_class("active")
+                await self.query_one("#player_hands").mount(self.active_hand)
+
                 hand.bet = int(self.query_one("#bet", expect_type=Input).value)
                 self.balance -= hand.bet * 100
                 self.player_balance = f"${self.balance / 100:.2f}"
@@ -269,13 +239,10 @@ class BlackjackApp(App):
                 self.dealer_hand = Hand(dealer=True)
 
                 for _ in range(2):
-                    self.draw_card()
-                    self.draw_card(dealer=True)
+                    await self.draw_card()
+                    await self.draw_card(dealer=True)
 
-                self.active_hand = HandDisplay(hand=hand)
-                self.active_hand.add_class("active")
-
-                self.query_one("#player_hands").mount(self.active_hand)
+                self.dealer_str = str(self.dealer_hand)
 
                 _, total11 = hand.get_total()
                 if total11 == 21:
@@ -293,28 +260,29 @@ class BlackjackApp(App):
                 ).name
 
             case "hit":
-                self.hit()
+                await self.hit()
 
             case "stand":
-                self.stand()
+                await self.stand()
 
             case "double":
                 self.active_hand.hand.bet *= 2
                 self.balance -= self.active_hand.hand.bet * 100
                 self.player_balance = f"${self.balance / 100:.2f}"
-                self.hit()
-                self.stand()
+                await self.hit()
+                await asyncio.sleep(0.5)
+                await self.stand()
 
             case "surrender":
-                self.surrender()
+                await self.surrender()
 
             case "split":
-                self.split()
+                await self.split()
 
-    def hit(self):
+    async def hit(self):
         hand = self.active_hand.hand
 
-        self.draw_card()
+        await self.draw_card()
         self.query_one("#double").disabled = True
         self.query_one("#split").disabled = True
 
@@ -322,12 +290,13 @@ class BlackjackApp(App):
         if total1 >= 21 or total11 == 21:
             self.query_one("#hit").disabled = True
             self.query_one("#surrender").disabled = True
+            await self.stand()
 
         self.recommended_strategy = STRATEGY.get_strategy(hand, self.dealer_hand).name
 
-        self.active_hand.update()
+        await self.active_hand.update()
 
-    def stand(self):
+    async def stand(self):
         self.active_hand.remove_class("active")
         self.active_hand.add_class("inactive")
 
@@ -340,9 +309,10 @@ class BlackjackApp(App):
             self.active_hand = hands[self.hand_idx]
             self.active_hand.remove_class("inactive")
             self.active_hand.add_class("active")
+            self.active_hand.scroll_visible()
             if len(self.active_hand.hand.cards) < 2:
-                self.draw_card()
-            self.active_hand.update()
+                await self.draw_card()
+            await self.active_hand.update()
 
             _, total11 = self.active_hand.hand.get_total()
             if total11 == 21:
@@ -356,31 +326,35 @@ class BlackjackApp(App):
             self.query_one("#surrender").disabled = False
 
         else:
-            self.end_round()
+            await self.end_round()
 
-    def surrender(self):
+    async def surrender(self):
         self.active_hand.hand.state = HandState.SURRENDER
         self.balance += self.active_hand.hand.bet * 50
         self.player_balance = f"${self.balance / 100:.2f}"
-        self.active_hand.update()
-        self.stand()
+        await self.active_hand.update()
+        await self.stand()
 
-    def split(self):
+    async def split(self):
         hand = self.active_hand.hand
         split_card = hand.cards.pop()
 
         self.balance = self.balance - hand.bet * 100
         self.player_balance = f"${self.balance / 100:.2f}"
 
-        self.draw_card()
+        await self.draw_card()
 
-        new_hand = HandDisplay(hand=Hand())
+        new_hand = HandDisplay(
+            hand=Hand(bet=self.active_hand.hand.bet), classes="inactive"
+        )
         new_hand.hand.add_card(split_card)
-        new_hand.update()
+        await self.query_one("#player_hands").mount(new_hand)
 
-        self.query_one("#player_hands").mount(new_hand)
+        await new_hand.update()
+        self.refresh()
+        self.refresh_css(animate=True)
 
-    def end_round(self) -> None:
+    async def end_round(self) -> None:
         self.query_one("#hit").disabled = True
         self.query_one("#stand").disabled = True
         self.query_one("#double").disabled = True
@@ -392,7 +366,7 @@ class BlackjackApp(App):
         self.dealer_hand.dealer = False
         total1, total11 = self.dealer_hand.get_total()
         while total1 < 17 and total11 < 18:
-            self.draw_card(dealer=True)
+            await self.draw_card(dealer=True)
             total1, total11 = self.dealer_hand.get_total()
 
         self.dealer_str = str(self.dealer_hand)
@@ -423,11 +397,11 @@ class BlackjackApp(App):
                     else:
                         hand.result = f"You win ${hand.hand.bet:.2f}!"
                         self.balance += hand.hand.bet * 200
-            hand.update()
+            await hand.update()
 
         self.player_balance = f"${self.balance / 100:.2f}"
 
-    def draw_card(self, dealer: bool = False) -> None:
+    async def draw_card(self, dealer: bool = False) -> None:
         if dealer:
             hand = self.dealer_hand
             hand.add_card(self.shoot.draw())
@@ -445,7 +419,7 @@ class BlackjackApp(App):
         else:
             hand = self.active_hand.hand
             hand.add_card(self.shoot.draw())
-            self.active_hand.update()
+            await self.active_hand.update()
 
         self.cards_remaining = len(self.shoot.cards) - self.shoot.reshuffle
         self.count = self.shoot.count
@@ -577,39 +551,11 @@ class BlackjackApp(App):
         await self.mount()
         self.query_one("#dealer_total_display", expect_type=SubTitle).update(value)
 
-    async def watch_player_str(self, value: str) -> None:
-        await self.mount()
-        self.query_one("#player_str_display", expect_type=TextContent).update(value)
-
-    async def watch_player_str2(self, value: str) -> None:
-        await self.mount()
-        self.query_one("#player_str_display2", expect_type=TextContent).update(value)
-
-    async def watch_player_total(self, value: str) -> None:
-        await self.mount()
-        self.query_one("#player_total_display", expect_type=SubTitle).update(value)
-
-    async def watch_player_total2(self, value: str) -> None:
-        await self.mount()
-        self.query_one("#player_total_display2", expect_type=SubTitle).update(value)
-
     async def watch_player_balance(self, value: str) -> None:
         await self.mount()
         self.query_one("#balance", expect_type=TextContent).update(
             Text(f"Balance: {value}")
         )
-
-    # async def watch_dealer_unicode(self, value: str) -> None:
-    #     await self.mount()
-    #     self.query_one("#dealer_hand", expect_type=TextContent).update(
-    #         Markdown(f"# {value}")
-    #     )
-
-    # async def watch_player_unicode(self, value: str) -> None:
-    #     await self.mount()
-    #     self.query_one("#player_hand", expect_type=TextContent).update(
-    #         Markdown(f"# {value}")
-    #     )
 
 
 if __name__ == "__main__":

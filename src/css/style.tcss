@@ -228,7 +228,7 @@ LocationLink:hover {
 }
 
 .player_hands {
-    height: 5;
+    height: 14;
     width: 100%;
     overflow: scroll;
 }
