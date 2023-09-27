@@ -251,8 +251,8 @@ class BlackjackApp(App):
                     self.query_one("#hit").disabled = False
                     self.query_one("#double").disabled = False
 
-                card1, card2 = hand.get_hand().split(",")
-                if card1 == card2:
+                card1, card2 = hand.cards
+                if min(card1.rank.value, 10) == min(card2.rank.value, 10):
                     self.query_one("#split").disabled = False
 
                 self.query_one("#stand").disabled = False
