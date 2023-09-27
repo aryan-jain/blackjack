@@ -271,8 +271,8 @@ class BlackjackApp(App):
                 await self.stand()
 
             case "double":
-                self.active_hand.hand.bet *= 2
                 self.balance -= self.active_hand.hand.bet * 100
+                self.active_hand.hand.bet *= 2
                 self.player_balance = f"${self.balance / 100:.2f}"
                 await self.hit()
                 await self.stand()

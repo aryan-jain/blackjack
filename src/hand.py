@@ -89,7 +89,7 @@ class Hand:
 
         for card in self.cards:  # Handle Aces
             if card.rank.value == 1:
-                if total1 + 11 > 21:
+                if total11 + 11 > 21:
                     total1 += 1
                     total11 += 1
                 else:

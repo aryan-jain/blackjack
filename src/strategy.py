@@ -24,6 +24,8 @@ class Strategy:
         if dealer_card not in self.splits.columns:
             return StrategyMove.STAND
 
+        _, total11 = player_hand.get_total()
+
         if len(cards) == 2:
             if cards[0] == cards[1]:
                 split_strategy = self.splits.loc[player_cards, dealer_card]
@@ -33,13 +35,11 @@ class Strategy:
                 soft_strategy = self.soft_totals.loc[player_cards, dealer_card]
                 return StrategyMove(soft_strategy)
 
-        _, total11 = player_hand.get_total()
-
-        match [total11, dealer_card]:
-            case [16, "9" | "10" | "A"]:
-                return StrategyMove.SURRENDER
-            case [15, "10"]:
-                return StrategyMove.SURRENDER
+            match [total11, dealer_card]:
+                case [16, "9" | "10" | "A"]:
+                    return StrategyMove.SURRENDER
+                case [15, "10"]:
+                    return StrategyMove.SURRENDER
 
         if total11 >= 17:
             hard_strategy = self.hard_totals.loc[">= 17", dealer_card]
